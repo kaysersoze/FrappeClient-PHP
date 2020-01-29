@@ -194,7 +194,10 @@ class FrappeClient {
 						curl_setopt(
 								$ch
 								,CURLOPT_POSTFIELDS
-								,array( 'data' => json_encode($params['data']) )
+								,json_encode(array( 'data' => json_encode($params['data']) ))
+							);
+						curl_setopt($ch, CURLOPT_HTTPHEADER, 
+								array("Content-Type: application/json; charset=utf-8")
 							);
 						curl_setopt($ch,CURLOPT_CUSTOMREQUEST, 'PUT');
 					break;
@@ -204,7 +207,10 @@ class FrappeClient {
 						curl_setopt(
 								$ch
 								,CURLOPT_POSTFIELDS
-								,array('data' => json_encode($params['data']) )
+								,json_encode(array( 'data' => json_encode($params['data']) ))
+							);
+						curl_setopt($ch, CURLOPT_HTTPHEADER, 
+								array("Content-Type: application/json; charset=utf-8")
 							);
 						curl_setopt($ch,CURLOPT_POST, true);
 					break;
