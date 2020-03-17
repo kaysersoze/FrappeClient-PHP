@@ -141,7 +141,30 @@ class FrappeClient {
 							)
 						);
 		}
-
+	public function search_many(
+			$doctype
+			,$conditions=array()
+			,$fields=array()
+			,$limit_start=0
+			,$limit_page_length=0
+		){
+			$this->_auth_check();
+			if($limit_page_length){
+				$limit = $limit_page_length;
+			}else{
+				$limit = $this->_limit_page_length;
+			}
+			return $this->_curl(
+						'SEARCH MANY'
+						, array(
+							'doctype' => $doctype,
+							'filters' => $conditions,
+							'fields' => $fields,
+							'limit_start' => $limit_start,
+							'limit_page_length' => $limit
+							)
+						);
+		}
 	public function update(
 			$doctype
 			,$key
@@ -165,6 +188,17 @@ class FrappeClient {
 				);
 		}
 
+	public function insert_many(
+			$doctype
+			,$params
+		){
+			$this->_auth_check();
+			return $this->_curl(
+				'INSERT MANY'
+				, array('doctype' => $doctype, 'data' => $params )
+				);
+		}
+
 	public function delete(
 			$doctype
 			,$key
@@ -175,7 +209,9 @@ class FrappeClient {
 				, array('doctype' => $doctype, 'key' => $key)
 				);
 		}
-
+	public function encode_value($data){
+		return array_map("rawurlencode", $data);
+	}
 	private function _curl(
 			$method='GET'
 			,$params=array()
@@ -214,10 +250,42 @@ class FrappeClient {
 							);
 						curl_setopt($ch,CURLOPT_POST, true);
 					break;
+				case 'INSERT MANY':
+						$url = $this->_site_url.'/api/method/frappe.client.insert_many';
+						$ch = curl_init($url);
+						curl_setopt(
+								$ch
+								,CURLOPT_POSTFIELDS
+								,json_encode(array( 'docs' => json_encode($params['data']) ))
+							);
+						curl_setopt($ch, CURLOPT_HTTPHEADER, 
+								array("Content-Type: application/json; charset=utf-8")
+							);
+						curl_setopt($ch,CURLOPT_POST, true);
+					break;
 				case 'DELETE':
 						$url = $this->_api_url.$params['doctype'].'/'.$params['key'];
 						$ch = curl_init($url);
 						curl_setopt($ch,CURLOPT_CUSTOMREQUEST, 'DELETE');
+					break;
+				case 'SEARCH MANY':
+						$url = $this->_site_url.'/api/method/frappe.client.get_list';
+						$ch = curl_init($url);
+						curl_setopt(
+								$ch
+								,CURLOPT_POSTFIELDS
+								,json_encode(array( 
+									'doctype' => $params['doctype'],
+									'fields' => json_encode($params['fields']),
+									'filters' => json_encode($params['filters']),
+									'limit_start' => $params['limit_start'],
+									'limit_page_length' => $params['limit_page_length']
+								))
+							);
+						curl_setopt($ch, CURLOPT_HTTPHEADER, 
+								array("Content-Type: application/json; charset=utf-8")
+							);
+						curl_setopt($ch,CURLOPT_POST, true);
 					break;
 				case 'SEARCH':
 						$query = array();
@@ -239,6 +307,9 @@ class FrappeClient {
 							foreach($query as $key => $value){
 								$url .= $key.'='.$value.'&';
 							}
+						}
+						if(strlen($url) > 65000){
+							echo ">>>>>> URL length exceeds to permitted limit\n";
 						}
 						$ch = curl_init($url);
 						curl_setopt($ch,CURLOPT_CUSTOMREQUEST, 'GET');
@@ -266,11 +337,18 @@ class FrappeClient {
 			curl_setopt($ch,CURLOPT_RETURNTRANSFER, true);
 			curl_setopt($ch,CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
 			curl_setopt($ch,CURLOPT_TIMEOUT, $this->_curl_timeout);
+			curl_setopt($ch,CURLOPT_FOLLOWLOCATION, false);
 			$response = curl_exec($ch);
 			$this->header = curl_getinfo($ch);
+			$this->http_code = $this->header["http_code"]; 
+			$this->error_no = null;
+			$this->error = null;
+			$this->data = null;
 			$error_no = curl_errno($ch);
 			$error = curl_error($ch);
 			curl_close($ch);
+			$err_match = array();
+			
 			if($error_no){
 				$this->error_no = $error_no;
 			}
@@ -278,6 +356,16 @@ class FrappeClient {
 				$this->error = $error;
 			}
 			$this->body = @json_decode($response);
+
+			preg_match('#<pre>(.*?)</pre\>#is', $response, $err_match);
+
+			if ($this->http_code != 200 && $err_match){
+				$this->error = $err_match[0];
+			}elseif($this->http_code== 200 && isset($this->body->data)){
+				$this->data = @json_decode(json_encode($this->body->data), true);
+			}elseif($this->http_code== 200 && isset($this->body->message)){
+				$this->data = @json_decode(json_encode($this->body->message), true);
+			}
 			if(JSON_ERROR_NONE != json_last_error()){
 				$this->body = $response;
 			}
